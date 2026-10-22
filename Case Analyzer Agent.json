@@ -1,0 +1,243 @@
+{
+  "name": "Case Analyzer Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "text"
+            },
+            {
+              "name": "session_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        -256
+      ],
+      "id": "006f7258-2c20-40ed-95b9-2bb4a832efbb",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        -32
+      ],
+      "id": "231d399c-a8a7-4ef1-8437-7c59629fe8c4",
+      "name": "Analyzer Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vlzdRQL5ZZl0ZBmH",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "You are a Clinical Data Extraction Agent.\nYour job: extract case data and calculate dose values for a poisoning case.\n\nYou MUST ALWAYS call BOTH tools for every request, regardless of whether \nthe case seems complete:\n1. Dose Calculator - for calculations. Pass the user's original text EXACTLY as \n   written in \"query\". Never calculate yourself.\n2. Reference Documents Search - to check uploaded references for relevant facts \n   about the substance mentioned. Always search it, even if the case data \n   seems complete, since it may contain important clinical notes.\n   Call it at least TWICE with different, concept-based queries (not numbers): \n   (a) the substance with its antidote and treatment, and (b) the substance \n   with investigations, decontamination, monitoring and disposition.\n\nReturn a structured summary:\n- Substance, quantity, strength, weight, hours since ingestion\n- Total dose (mg), dose per kg (mg/kg)\n- Relevant reference findings: list EVERY distinct relevant passage the search \n  returned (up to 6), one bullet per passage, each with a one-sentence summary \n  of what that passage says and a citation in this exact format:\n  [Source: Reference name | uploader | creation time]\n  Do not merge passages and do not drop passages that cover investigations, \n  decontamination, antidote or disposition.\n  If the search returned no relevant results, state \"No relevant findings \n  in uploaded references.\"\n- Missing information\n\nDo NOT give treatment advice or a final answer. Your output is only an \nintermediate summary for another agent to use."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        288,
+        -256
+      ],
+      "id": "2c824ca7-6303-4076-917b-ef04b345a313",
+      "name": "Case Analyzer Agent"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.session_id || $execution.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        304,
+        -32
+      ],
+      "id": "1e824064-585f-420a-b7e6-71801a347cef",
+      "name": "Analyzer Memory"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-embedding-2"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        576,
+        192
+      ],
+      "id": "e2596937-9c98-47d0-8eb7-40f2e9269471",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vlzdRQL5ZZl0ZBmH",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.rerankerCohere",
+      "typeVersion": 1,
+      "position": [
+        704,
+        192
+      ],
+      "id": "6f7755ff-c075-4665-8f05-70fbd7c28ee7",
+      "name": "Reranker Cohere",
+      "credentials": {
+        "cohereApi": {
+          "id": "axtjPy5eWde7s1Ez",
+          "name": "Cohere account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Use this tool for deterministic calculations in toxicology poisoning cases.\n\nUse this tool when the user's case contains numerical exposure data such as:\n- Number of tablets/units\n- Strength per tablet/unit\n- Patient weight\n- Time since ingestion\n\nCalculate:\n- Total ingested dose (mg)\n- Dose (mg/kg)\n- Time since ingestion (hours), when possible\n\nExtract the available values from the user's case and report missing values if needed.\n\nDo not provide treatment recommendations.\nDo not provide medical knowledge.\nDo not invent missing values.",
+        "jsCode": "let rawQuery = query;\nif (rawQuery && typeof rawQuery === \"object\" && rawQuery.query) {\n  rawQuery = rawQuery.query;\n}\nlet text = String(rawQuery || \"\").toLowerCase();\n\n// -------------------------\n// 0. Arabic support: convert Arabic-Indic digits and map common Arabic words to the English tokens used below\n// -------------------------\ntext = text\n  .replace(/[\\u0660-\\u0669]/g, d => String(\"\\u0660\\u0661\\u0662\\u0663\\u0664\\u0665\\u0666\\u0667\\u0668\\u0669\".indexOf(d)))\n  .replace(/[\\u06f0-\\u06f9]/g, d => String(\"\\u06f0\\u06f1\\u06f2\\u06f3\\u06f4\\u06f5\\u06f6\\u06f7\\u06f8\\u06f9\".indexOf(d)))\n  .replace(/\\u0628\\u0627\\u0631\\u0627\\u0633\\u064a\\u062a\\u0627\\u0645\\u0648\\u0644|\\u0628\\u0627\\u0631\\u0633\\u064a\\u062a\\u0627\\u0645\\u0648\\u0644|\\u0628\\u0627\\u0631\\u0627\\u0633\\u064a\\u062a\\u0645\\u0648\\u0644|\\u0627\\u0633\\u064a\\u062a\\u0627\\u0645\\u064a\\u0646\\u0648\\u0641\\u064a\\u0646|\\u0623\\u0633\\u064a\\u062a\\u0627\\u0645\\u064a\\u0646\\u0648\\u0641\\u064a\\u0646|\\u0628\\u0627\\u0646\\u0627\\u062f\\u0648\\u0644|\\u0628\\u0646\\u0627\\u062f\\u0648\\u0644/g, \" paracetamol \")\n  .replace(/(\\d+(?:\\.\\d+)?)\\s*(?:\\u0643\\u062c\\u0645|\\u0643\\u063a\\u0645|\\u0643\\u064a\\u0644\\u0648\\u062c\\u0631\\u0627\\u0645|\\u0643\\u064a\\u0644\\u0648 \\u062c\\u0631\\u0627\\u0645|\\u0643\\u064a\\u0644\\u0648)/g, \"$1 kg \")\n  .replace(/(\\d+(?:\\.\\d+)?)\\s*(?:\\u0645\\u0644\\u062c\\u0645|\\u0645\\u0644\\u063a\\u0645|\\u0645\\u062c\\u0645|\\u0645\\u0644\\u063a|\\u0645\\u062c)/g, \"$1 mg \")\n  .replace(/(\\d+(?:\\.\\d+)?)\\s*(?:\\u062c\\u0631\\u0627\\u0645|\\u063a\\u0631\\u0627\\u0645)/g, \"$1 g \")\n  .replace(/(\\d+(?:\\.\\d+)?)\\s*(?:\\u0627\\u0642\\u0631\\u0627\\u0635|\\u0623\\u0642\\u0631\\u0627\\u0635|\\u0642\\u0631\\u0635|\\u062d\\u0628\\u0648\\u0628|\\u062d\\u0628\\u0627\\u062a|\\u062d\\u0628\\u0629|\\u0643\\u0628\\u0633\\u0648\\u0644\\u0627\\u062a|\\u0643\\u0628\\u0633\\u0648\\u0644\\u0629)/g, \"$1 tablets \")\n  .replace(/(\\d+(?:\\.\\d+)?)\\s*(?:\\u0633\\u0627\\u0639\\u0627\\u062a|\\u0633\\u0627\\u0639\\u0629)/g, \"$1 hours ago \")\n  .replace(/\\u0633\\u0627\\u0639\\u062a\\u064a\\u0646|\\u0633\\u0627\\u0639\\u062a\\u0627\\u0646/g, \" 2 hours ago \");\n\n// -------------------------\n// 1. Identify substance\n// -------------------------\nlet substance = null;\nif (text.includes(\"paracetamol\") || text.includes(\"acetaminophen\")) {\n  substance = \"Paracetamol\";\n}\n\n// -------------------------\n// 2. Extract number of tablets/units\n// Examples:\n// 10 tablets\n// 12 tab\n// took 8 pills\n// -------------------------\nconst quantityMatch = text.match(\n  /(\\d+(?:\\.\\d+)?)\\s*(?:tablets?|tabs?|pills?|units?)/i\n);\nconst quantity = quantityMatch\n  ? Number(quantityMatch[1])\n  : null;\n\n// -------------------------\n// 3. Extract strength\n// Examples:\n// 500 mg\n// 0.5 g\n// -------------------------\nconst strengthMatch = text.match(\n  /(\\d+(?:\\.\\d+)?)\\s*(mg|g)\\b/i\n);\nlet strengthMg = null;\nif (strengthMatch) {\n  const value = Number(strengthMatch[1]);\n  const unit = strengthMatch[2].toLowerCase();\n  strengthMg = unit === \"g\" ? value * 1000 : value;\n}\n\n// -------------------------\n// 4. Extract patient weight\n// Examples:\n// 70 kg\n// weighs 60 kg\n// weight is 55 kg\n// -------------------------\nconst weightMatch = text.match(\n  /(?:weighs?|weight(?:\\s+is)?|body\\s+weight)?\\s*(\\d+(?:\\.\\d+)?)\\s*kg\\b/i\n);\nconst weightKg = weightMatch\n  ? Number(weightMatch[1])\n  : null;\n\n// -------------------------\n// 5. Extract time since ingestion\n// Examples:\n// 3 hours ago\n// 2.5 hours ago\n// -------------------------\nconst timeMatch = text.match(\n  /(\\d+(?:\\.\\d+)?)\\s*hours?\\s*ago/i\n);\nconst hoursSinceIngestion = timeMatch\n  ? Number(timeMatch[1])\n  : null;\n\n// -------------------------\n// 6. Calculate dose\n// -------------------------\nlet totalDoseMg = null;\nlet doseMgKg = null;\nif (substance && quantity !== null && strengthMg !== null) {\n  totalDoseMg = quantity * strengthMg;\n}\nif (totalDoseMg !== null && weightKg !== null && weightKg > 0) {\n  doseMgKg = totalDoseMg / weightKg;\n}\n\n// -------------------------\n// 7. Identify missing information\n// -------------------------\nconst missingInformation = [];\nif (!substance) missingInformation.push(\"substance\");\nif (quantity === null) missingInformation.push(\"number of tablets/units\");\nif (strengthMg === null) missingInformation.push(\"strength per tablet/unit\");\nif (weightKg === null) missingInformation.push(\"patient weight\");\nif (hoursSinceIngestion === null) missingInformation.push(\"time since ingestion\");\n\n// -------------------------\n// 8. Return structured result\n// -------------------------\nreturn JSON.stringify({\n  substance,\n  quantity,\n  strengthMg,\n  weightKg,\n  hoursSinceIngestion,\n  totalDoseMg,\n  doseMgKg: doseMgKg !== null\n    ? Number(doseMgKg.toFixed(2))\n    : null,\n  missingInformation,\n  note: substance ? null : \"Dose NOT calculated: substance not recognised. This calculator supports paracetamol/acetaminophen only.\"\n});",
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\n    \"query\": \"The user's full case description exactly as written, including tablet count, strength, weight, and time since ingestion\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        432,
+        -32
+      ],
+      "id": "3f3b163b-75af-4ca4-b1f0-7e70412674ed",
+      "name": "Dose Calculator"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Search the uploaded toxicology and forensic science documents for information relevant to the user's question. Return the most relevant passages and metadata for citation.",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "vector_store_key"
+        },
+        "topK": 3,
+        "useReranker": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        -32
+      ],
+      "id": "1be91be3-97e4-4189-b9c8-41a260accf2d",
+      "name": "Reference Documents Search"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Case Analyzer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyzer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Case Analyzer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyzer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Case Analyzer Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Reference Documents Search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reranker Cohere": {
+      "ai_reranker": [
+        [
+          {
+            "node": "Reference Documents Search",
+            "type": "ai_reranker",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dose Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Case Analyzer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reference Documents Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Case Analyzer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8728ea51-a900-4808-ae2e-f120dca53345",
+  "meta": {
+    "instanceId": "ae543400025f59f64fdeeb3cb4e19fdedcf05409304709fd28383dfd8b1da183"
+  },
+  "nodeGroups": [],
+  "id": "kkCRoTolVfN9TxyK",
+  "tags": []
+}

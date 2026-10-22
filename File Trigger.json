@@ -1,0 +1,397 @@
+{
+  "name": "File Trigger",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        368,
+        512
+      ],
+      "id": "645d4556-4d84-4766-88d1-f5db60f36c7f",
+      "name": "Manual Re-ingest"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "https://drive.google.com/drive/u/1/folders/1muRNSe4EYY_6wjpL6gN36A_DVryxDJG_",
+          "mode": "url"
+        },
+        "event": "fileUpdated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        368,
+        320
+      ],
+      "id": "245ed6ad-68e3-47ba-8875-0fdaba207862",
+      "name": "Google Drive Trigger",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "ludXsoiOFSmNqAkP",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "1muRNSe4EYY_6wjpL6gN36A_DVryxDJG_",
+            "mode": "list",
+            "cachedResultName": "Medical Pharm",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1muRNSe4EYY_6wjpL6gN36A_DVryxDJG_"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {
+          "fields": [
+            "*"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        592,
+        416
+      ],
+      "id": "1b706d7c-18b8-45bd-b1be-72afe2023990",
+      "name": "Search files and folders",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "ludXsoiOFSmNqAkP",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1c2fe381-5aea-4c4a-a0fb-1eba1b6ac40b",
+              "name": "id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "ca6f3f9b-1e24-4a15-9a29-5c32f55b92d3",
+              "name": "owner Name",
+              "value": "={{ $json.owners?.[0]?.displayName || $('Google Drive Trigger').first()?.json?.owners?.[0]?.displayName || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "305ffb2c-850b-436f-a06a-35f3434107fb",
+              "name": "book name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "d79631df-edc1-4f8c-b6db-c2d7128e9e9d",
+              "name": "createdTime",
+              "value": "={{ $json.createdTime || $('Google Drive Trigger').first()?.json?.createdTime || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        816,
+        416
+      ],
+      "id": "c7a0f40f-ba36-4119-a7d0-8d105c43028b",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1040,
+        416
+      ],
+      "id": "35c2365a-dfee-4436-aa08-0b1f3b3d3c53",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "ludXsoiOFSmNqAkP",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        416
+      ],
+      "id": "8a96d6dc-06e6-43e6-8966-f43512f69699",
+      "name": "Extract from File",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "vector_store_key"
+        },
+        "clearStore": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1520,
+        0
+      ],
+      "id": "715879be-5c4a-47df-b240-b05799dd1531",
+      "name": "Simple Vector Store"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "Reference name",
+                "value": "={{ $('Edit Fields').item.json['book name'] }}"
+              },
+              {
+                "name": "uploader",
+                "value": "={{ $('Edit Fields').item.json['owner Name'] }}"
+              },
+              {
+                "name": "upload date",
+                "value": "={{ $('Edit Fields').item.json.createdTime }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1624,
+        232
+      ],
+      "id": "afb162d0-fe1a-416d-803f-bc2a86857eda",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-embedding-2"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1496,
+        232
+      ],
+      "id": "c3b8497e-5da7-453c-aaac-01191d8a7845",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vlzdRQL5ZZl0ZBmH",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1704,
+        440
+      ],
+      "id": "77573ba3-a8b9-4805-8bae-d3d1fda54db4",
+      "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "chatId": "1260262249",
+        "text": "=ToxWatch knowledge ingestion: a file in the reference folder could not be read (only PDFs are supported). File: {{ $('Edit Fields').item.json['Reference name'] ?? 'unknown' }}. The vector store was NOT updated with this file. Reason: {{ $json.error?.message ?? 'unknown' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "7bcc7618-3a13-45c3-b565-cf4ca1725aee",
+      "name": "Notify Unreadable File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1632,
+        608
+      ],
+      "webhookId": "62165cb4-3713-44f3-bcd4-dc22406778d7",
+      "credentials": {
+        "telegramApi": {
+          "id": "FDrMsRwBHtmCesgQ",
+          "name": "My Medical Bot"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Re-ingest": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Simple Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Unreadable File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Simple Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Simple Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "2a47f343-ba20-435b-8f92-eecf62819b61",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ae543400025f59f64fdeeb3cb4e19fdedcf05409304709fd28383dfd8b1da183"
+  },
+  "nodeGroups": [],
+  "id": "CnuM8BDGOA3AdrfA",
+  "tags": []
+}

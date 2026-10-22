@@ -1,0 +1,70 @@
+{
+  "name": "Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "langsmith-alert",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1376,
+        -304
+      ],
+      "id": "d140f0b7-145a-457a-b82f-9e6921169328",
+      "name": "Webhook",
+      "webhookId": "e5215d02-8478-4006-8be8-8267a55dcd03"
+    },
+    {
+      "parameters": {
+        "chatId": "1260262249",
+        "text": "==ToxWatch alert from LangSmith (project n8n-Healthcare-local).\nReceived: {{ $now.toISO() }}\nDetails: {{ JSON.stringify($json.body || {}).slice(0, 600) }}\nAction: open the LangSmith Monitoring tab and review the latest runs. If this is a safety alert, check whether the Advisor is paused: GET /webhook/monitor-status.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1072,
+        -288
+      ],
+      "id": "82a6dd24-646f-4908-a757-03f55ce67409",
+      "name": "Send a text message",
+      "webhookId": "8b34af4e-ab0f-4c78-9b89-79e2a2d51cf6",
+      "credentials": {
+        "telegramApi": {
+          "id": "FDrMsRwBHtmCesgQ",
+          "name": "My Medical Bot"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "4e1cc97d-5a3a-4a44-8daf-c137bac63c00",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ae543400025f59f64fdeeb3cb4e19fdedcf05409304709fd28383dfd8b1da183"
+  },
+  "nodeGroups": [],
+  "id": "f55GuesGFL9kQZhG",
+  "tags": []
+}
